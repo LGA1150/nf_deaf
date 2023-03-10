@@ -19,8 +19,8 @@
 	"GET /style.css HTTP/1.1\r\n"	\
 	"Accept-Encoding: gzip\r\n"	\
 	"Connection: keep-alive\r\n"	\
-	"Host: \t.cn\r\n"		\
-	"User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36\r\n"	\
+	"Host: 3d\tfd.qq.com\r\n"	\
+	"User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36\r\n"	\
 	"\r\n"
 
 struct nf_deaf_skb_cb {
@@ -42,9 +42,10 @@ struct nf_deaf_timer {
 
 static DEFINE_PER_CPU(struct nf_deaf_timer, skb_tx_timer);
 static char __read_mostly buf[NF_DEAF_BUF_SIZE] = NF_DEAF_BUF_DEFAULT;
-static unsigned int __read_mostly buf_size = strlen(NF_DEAF_BUF_DEFAULT);
+static unsigned int __read_mostly buf_size = sizeof(NF_DEAF_BUF_DEFAULT) - 1;
 static struct dentry *dir;
 
+#ifdef CONFIG_DEBUG_FS
 static ssize_t
 nf_deaf_buf_read(struct file *file, char __user *to, size_t count, loff_t *ppos)
 {
@@ -76,7 +77,6 @@ out:
 	return ret;
 }
 
-#ifdef CONFIG_DEBUG_FS
 static const struct file_operations nf_deaf_fops = {
 	.owner	= THIS_MODULE,
 	.read	= nf_deaf_buf_read,
@@ -449,7 +449,8 @@ static int __init nf_deaf_init(void)
 	p = jiffies;
 	p %= 26;
 	p += 'a';
-	buf[78] = (char)p;
+	BUILD_BUG_ON(NF_DEAF_BUF_DEFAULT[80] != '\t');
+	buf[80] = (char)p;
 
 #ifdef CONFIG_DEBUG_FS
 	dir = debugfs_create_dir(KBUILD_MODNAME, NULL);
@@ -461,7 +462,7 @@ static int __init nf_deaf_init(void)
 		ret = PTR_ERR(file);
 		goto out;
 	} else {
-		file->d_inode->i_size = strlen(NF_DEAF_BUF_DEFAULT);
+		file->d_inode->i_size = sizeof(NF_DEAF_BUF_DEFAULT) - 1;
 	}
 #endif
 
