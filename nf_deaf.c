@@ -100,16 +100,8 @@ nf_deaf_tcp_init(struct tcphdr *th, const struct tcphdr *oth,
 
 	th->source = oth->source;
 	th->dest = oth->dest;
-	if (corrupt_seq)
-		th->seq = oth->seq ^ htonl(BIT(31));
-	else
-		th->seq = oth->seq;
-
-	if (corrupt_ackseq)
-		th->ack_seq = oth->ack_seq ^ htonl(BIT(31));
-	else
-		th->ack_seq = oth->ack_seq;
-
+	th->seq = oth->seq ^ htonl((u32)corrupt_seq << 31);
+	th->ack_seq = oth->ack_seq ^ htonl((u32)corrupt_ackseq << 31);
 	th->res1 = 0;
 	th->doff = NF_DEAF_TCP_DOFF;
 	tcp_flag_byte(th) = tcp_flag_byte(oth);
@@ -308,13 +300,9 @@ nf_deaf_xmit4(const struct sk_buff *oskb, const struct iphdr *oiph,
 	th = (void *)iph + sizeof(*iph);
 	nf_deaf_tcp_init(th, oth, corrupt_seq, corrupt_ackseq, tmp_buf_size);
 
-	th->check = ~tcp_v4_check(NF_DEAF_TCP_DOFF * 4 + tmp_buf_size, iph->saddr, iph->daddr, 0);
-	if (corrupt_checksum)
-		th->check++;
-
-	skb->ip_summed = CHECKSUM_PARTIAL;
-	skb->csum_start = (unsigned char *)th - skb->head;
-	skb->csum_offset = offsetof(struct tcphdr, check);
+	th->check = tcp_v4_check(NF_DEAF_TCP_DOFF * 4 + tmp_buf_size, iph->saddr, iph->daddr,
+				 csum_partial(th, NF_DEAF_TCP_DOFF * 4 + tmp_buf_size, 0));
+	th->check += corrupt_checksum;
 
 	return nf_deaf_send_generated_skb(skb, state, repeat);
 }
@@ -354,8 +342,7 @@ nf_deaf_xmit6(const struct sk_buff *oskb, const struct ipv6hdr *oip6h,
 	th->check = csum_ipv6_magic(&ip6h->saddr, &ip6h->daddr, NF_DEAF_TCP_DOFF * 4 + tmp_buf_size,
 				    IPPROTO_TCP, csum_partial(th, NF_DEAF_TCP_DOFF * 4 + tmp_buf_size,
 							      0));
-	if (corrupt_checksum)
-		th->check++;
+	th->check += corrupt_checksum;
 
 	return nf_deaf_send_generated_skb(skb, state, repeat);
 }
