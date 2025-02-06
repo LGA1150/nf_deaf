@@ -15,13 +15,7 @@
 
 #define NF_DEAF_TCP_DOFF	10
 #define NF_DEAF_BUF_SIZE	256
-#define NF_DEAF_BUF_DEFAULT	\
-	"GET /style.css HTTP/1.1\r\n"	\
-	"Accept-Encoding: gzip\r\n"	\
-	"Connection: keep-alive\r\n"	\
-	"Host: 3d\tfd.qq.com\r\n"	\
-	"User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36\r\n"	\
-	"\r\n"
+#define NF_DEAF_BUF_DEFAULT	"USER ftpuser\r\n"
 
 struct nf_deaf_skb_cb {
 	union {
