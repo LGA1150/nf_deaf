@@ -424,14 +424,7 @@ static const struct nf_hook_ops nf_deaf_postrouting_hooks[] = {
 static int __init nf_deaf_init(void)
 {
 	struct dentry __maybe_unused *file;
-	unsigned long p;
 	int ret, i;
-
-	p = jiffies;
-	p %= 26;
-	p += 'a';
-	BUILD_BUG_ON(NF_DEAF_BUF_DEFAULT[80] != '\t');
-	buf[80] = (char)p;
 
 #ifdef CONFIG_DEBUG_FS
 	dir = debugfs_create_dir(KBUILD_MODNAME, NULL);
