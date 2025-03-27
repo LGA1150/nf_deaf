@@ -464,8 +464,15 @@ static void __exit nf_deaf_exit(void)
 	debugfs_remove(dir);
 	nf_unregister_net_hooks(&init_net, nf_deaf_postrouting_hooks, ARRAY_SIZE(nf_deaf_postrouting_hooks));
 
-	for_each_possible_cpu(i)
-		del_timer_sync(&per_cpu_ptr(&skb_tx_timer, i)->timer);
+	for_each_possible_cpu(i) {
+		struct nf_deaf_timer *percpu_timer = per_cpu_ptr(&skb_tx_timer, i);
+		struct sk_buff *skb, *tmp;
+
+		del_timer_sync(&percpu_timer->timer);
+
+		list_for_each_entry_safe(skb, tmp, &percpu_timer->list, list)
+			kfree_skb(skb);
+	}
 }
 module_exit(nf_deaf_exit);
 
