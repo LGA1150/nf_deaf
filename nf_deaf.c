@@ -43,12 +43,12 @@ static struct dentry *dir;
 static ssize_t
 nf_deaf_buf_read(struct file *file, char __user *to, size_t count, loff_t *ppos)
 {
-	struct rw_semaphore *lock = &file->f_inode->i_rwsem;
+	struct inode *inode = file->f_inode;
 	ssize_t ret;
 
-	down_read(lock);
+	inode_lock_shared(inode);
 	ret = simple_read_from_buffer(to, count, ppos, buf, READ_ONCE(buf_size));
-	up_read(lock);
+	inode_unlock_shared(inode);
 	return ret;
 }
 
@@ -56,10 +56,9 @@ static ssize_t
 nf_deaf_buf_write(struct file *file, const char __user *from, size_t count, loff_t *ppos)
 {
 	struct inode *inode = file->f_inode;
-	struct rw_semaphore *lock = &inode->i_rwsem;
 	ssize_t ret;
 
-	down_write(lock);
+	inode_lock(inode);
 	ret = simple_write_to_buffer(buf, NF_DEAF_BUF_SIZE, ppos, from, count);
 	if (ret < 0)
 		goto out;
@@ -67,7 +66,7 @@ nf_deaf_buf_write(struct file *file, const char __user *from, size_t count, loff
 	WRITE_ONCE(buf_size, *ppos);
 	inode->i_size = *ppos;
 out:
-	up_write(lock);
+	inode_unlock(inode);
 	return ret;
 }
 
