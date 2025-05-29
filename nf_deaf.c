@@ -98,6 +98,7 @@ nf_deaf_tcp_init(struct tcphdr *th, const struct tcphdr *oth,
 	th->res1 = 0;
 	th->doff = NF_DEAF_TCP_DOFF;
 	tcp_flag_byte(th) = tcp_flag_byte(oth);
+	th->window = oth->window;
 	th->check = 0;
 	th->urg_ptr = 0;
 
