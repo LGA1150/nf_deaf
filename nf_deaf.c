@@ -89,24 +89,31 @@ static void
 nf_deaf_tcp_init(struct tcphdr *th, const struct tcphdr *oth,
 		 bool corrupt_seq, bool corrupt_ackseq, unsigned int payloadsize)
 {
-	__be16 *data;
+	int opt_len       = oth->doff * 4 - sizeof(*th);
+    int new_hdr_len, new_opt_area, copy_len;
 
 	th->source = oth->source;
 	th->dest = oth->dest;
 	th->seq = oth->seq ^ htonl((u32)corrupt_seq << 31);
 	th->ack_seq = oth->ack_seq ^ htonl((u32)corrupt_ackseq << 31);
 	th->res1 = 0;
-	th->doff = NF_DEAF_TCP_DOFF;
+	th->doff = oth->doff;
 	tcp_flag_byte(th) = tcp_flag_byte(oth);
 	th->window = oth->window;
 	th->check = 0;
 	th->urg_ptr = 0;
-	memset((char*)th + sizeof(*th), 0, th->doff*4 - sizeof(*th));
-	
-	data = (void *)th + sizeof(*th);
-	// data[0] = htons(0x1312);
-	// data[9] = 0;
-	memcpy(data + NF_DEAF_TCP_DOFF, buf, payloadsize);
+	new_hdr_len   = th->doff * 4;
+    new_opt_area  = new_hdr_len - sizeof(*th);
+    memset((char*)th + sizeof(*th), 0, new_opt_area);
+
+	copy_len = opt_len < new_opt_area ? opt_len : new_opt_area;
+    if (copy_len > 0) {
+        memcpy((char*)th + sizeof(*th),
+               (char*)oth + sizeof(*th),
+               copy_len);
+    }
+
+    memcpy((char*)th + new_hdr_len, buf, payloadsize);
 }
 
 static struct sk_buff *
@@ -288,15 +295,16 @@ nf_deaf_xmit4(const struct sk_buff *oskb, const struct iphdr *oiph,
 	*iph = *oiph;
 	iph->check = 0;
 	iph->ihl = 5;
-	iph->tot_len = htons(sizeof(*iph) + NF_DEAF_TCP_DOFF * 4 + tmp_buf_size);
+	iph->tot_len = htons(sizeof(*iph) + oth->doff * 4 + tmp_buf_size);
 	iph->ttl = ttl ?: iph->ttl;
 	iph->check = ip_fast_csum(iph, iph->ihl);
 
 	th = (void *)iph + sizeof(*iph);
 	nf_deaf_tcp_init(th, oth, corrupt_seq, corrupt_ackseq, tmp_buf_size);
 
-	th->check = tcp_v4_check(NF_DEAF_TCP_DOFF * 4 + tmp_buf_size, iph->saddr, iph->daddr,
-				 csum_partial(th, NF_DEAF_TCP_DOFF * 4 + tmp_buf_size, 0));
+	th->check = 0;
+	th->check = tcp_v4_check(oth->doff * 4 + tmp_buf_size, iph->saddr, iph->daddr,
+				 csum_partial(th, oth->doff * 4 + tmp_buf_size, 0));
 	th->check += corrupt_checksum;
 
 	return nf_deaf_send_generated_skb(skb, state, repeat);
@@ -329,13 +337,14 @@ nf_deaf_xmit6(const struct sk_buff *oskb, const struct ipv6hdr *oip6h,
 	// copy old IP header, but change payload_len
 	ip6h = ipv6_hdr(skb);
 	*ip6h = *oip6h;
-	ip6h->payload_len = htons(NF_DEAF_TCP_DOFF * 4 + tmp_buf_size);
+	ip6h->payload_len = htons(oth->doff * 4 + tmp_buf_size);
 	ip6h->hop_limit = ttl ?: ip6h->hop_limit;
 
 	th = (void *)ip6h + sizeof(*ip6h);
 	nf_deaf_tcp_init(th, oth, corrupt_seq, corrupt_ackseq, tmp_buf_size);
-	th->check = csum_ipv6_magic(&ip6h->saddr, &ip6h->daddr, NF_DEAF_TCP_DOFF * 4 + tmp_buf_size,
-				    IPPROTO_TCP, csum_partial(th, NF_DEAF_TCP_DOFF * 4 + tmp_buf_size,
+	th->check = 0;
+	th->check = csum_ipv6_magic(&ip6h->saddr, &ip6h->daddr, th->doff * 4 + tmp_buf_size,
+				    IPPROTO_TCP, csum_partial(th, th->doff * 4 + tmp_buf_size,
 							      0));
 	th->check += corrupt_checksum;
 
