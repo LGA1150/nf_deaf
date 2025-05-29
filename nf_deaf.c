@@ -103,7 +103,7 @@ nf_deaf_tcp_init(struct tcphdr *th, const struct tcphdr *oth,
 	th->urg_ptr = 0;
 
 	data = (void *)th + sizeof(*th);
-	data[0] = htons(0x1312);
+	// data[0] = htons(0x1312);
 	data[9] = 0;
 	memcpy(data + NF_DEAF_TCP_DOFF, buf, payloadsize);
 }
