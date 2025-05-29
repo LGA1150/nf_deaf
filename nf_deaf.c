@@ -101,10 +101,11 @@ nf_deaf_tcp_init(struct tcphdr *th, const struct tcphdr *oth,
 	th->window = oth->window;
 	th->check = 0;
 	th->urg_ptr = 0;
-
+	memset((char*)th + sizeof(*th), 0, th->doff*4 - sizeof(*th));
+	
 	data = (void *)th + sizeof(*th);
 	// data[0] = htons(0x1312);
-	data[9] = 0;
+	// data[9] = 0;
 	memcpy(data + NF_DEAF_TCP_DOFF, buf, payloadsize);
 }
 
