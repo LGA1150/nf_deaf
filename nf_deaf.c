@@ -120,20 +120,32 @@ static struct sk_buff *
 nf_deaf_alloc_and_init_skb(const struct sk_buff *oskb, unsigned int l3hdrsize, unsigned int payloadsize)
 {
 	struct dst_entry *dst;
+	unsigned int mac_len;
+	unsigned char *mac_ptr;
 	struct sk_buff *skb;
 
-	skb = alloc_skb(LL_MAX_HEADER + l3hdrsize + NF_DEAF_TCP_DOFF * 4 + payloadsize + 32, GFP_ATOMIC);
+	mac_len = skb_network_header(oskb) - skb_mac_header(oskb);
+	skb = alloc_skb(LL_MAX_HEADER + mac_len + l3hdrsize + NF_DEAF_TCP_DOFF*4 + payloadsize + 16, GFP_ATOMIC);
 	if (unlikely(!skb))
 		return NULL;
 
 	skb_reserve(skb, LL_MAX_HEADER);
-	__skb_put(skb, l3hdrsize + NF_DEAF_TCP_DOFF * 4 + payloadsize);
+	if (mac_len) {
+        mac_ptr = skb_push(skb, mac_len);
+        skb_reset_mac_header(skb);
+        memcpy(mac_ptr, skb_mac_header(oskb), mac_len);
+    }
+	__skb_put(skb, mac_len + l3hdrsize + NF_DEAF_TCP_DOFF*4 + payloadsize);
 	skb_copy_queue_mapping(skb, oskb);
 	dst = dst_clone(skb_dst(oskb));
+	if (!dst || IS_ERR(dst)) {
+        kfree_skb(skb);
+        return NULL;
+    }
 	skb->dev = dst->dev;
 	skb_dst_set(skb, dst);
 	skb_reset_network_header(skb);
-	skb_set_transport_header(skb, l3hdrsize);
+	skb_set_transport_header(skb, mac_len + l3hdrsize);
 
 	return skb;
 }
