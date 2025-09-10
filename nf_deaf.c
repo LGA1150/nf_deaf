@@ -14,7 +14,7 @@
 #define MARK_TTL	GENMASK(4, 0)
 
 #define NF_DEAF_TCP_DOFF	10
-#define NF_DEAF_BUF_SIZE	256
+#define NF_DEAF_BUF_SIZE	SZ_2K
 #define NF_DEAF_BUF_DEFAULT	"USER ftpuser\r\n"
 
 struct nf_deaf_skb_cb {
@@ -35,7 +35,7 @@ struct nf_deaf_timer {
 };
 
 static DEFINE_PER_CPU(struct nf_deaf_timer, skb_tx_timer);
-static char __read_mostly buf[NF_DEAF_BUF_SIZE] = NF_DEAF_BUF_DEFAULT;
+static char __read_mostly buf[NF_DEAF_BUF_SIZE] __aligned(NF_DEAF_BUF_SIZE) = NF_DEAF_BUF_DEFAULT;
 static unsigned int __read_mostly buf_size = sizeof(NF_DEAF_BUF_DEFAULT) - 1;
 static struct dentry *dir;
 
