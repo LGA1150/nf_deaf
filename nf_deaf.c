@@ -4,7 +4,6 @@
 #include <linux/debugfs.h>
 #include <linux/netfilter_ipv4.h>
 #include <linux/netfilter_ipv6.h>
-#include <linux/vmalloc.h>
 
 #define MARK_MAGIC	GENMASK(31, 16)
 #define MARK_WR_ACKSEQ	BIT(15)
@@ -38,7 +37,6 @@ struct nf_deaf_timer {
 static DEFINE_PER_CPU(struct nf_deaf_timer, skb_tx_timer);
 static char __read_mostly buf[NF_DEAF_BUF_SIZE] __aligned(NF_DEAF_BUF_SIZE) = NF_DEAF_BUF_DEFAULT;
 static unsigned int __read_mostly buf_size = sizeof(NF_DEAF_BUF_DEFAULT) - 1;
-static struct page * __read_mostly buf_page;
 static struct dentry *dir;
 
 #ifdef CONFIG_DEBUG_FS
@@ -89,7 +87,7 @@ nf_deaf_postrouting_hook6(void *priv, struct sk_buff *skb,
 
 static void
 nf_deaf_tcp_init(struct tcphdr *th, const struct tcphdr *oth,
-		 bool corrupt_seq, bool corrupt_ackseq)
+		 bool corrupt_seq, bool corrupt_ackseq, unsigned int payloadsize)
 {
 	__be16 *data;
 
@@ -106,6 +104,7 @@ nf_deaf_tcp_init(struct tcphdr *th, const struct tcphdr *oth,
 	data = (void *)th + sizeof(*th);
 	data[0] = htons(0x1312);
 	data[9] = 0;
+	memcpy(data + NF_DEAF_TCP_DOFF, buf, payloadsize);
 }
 
 static struct sk_buff *
@@ -114,23 +113,18 @@ nf_deaf_alloc_and_init_skb(const struct sk_buff *oskb, unsigned int l3hdrsize, u
 	struct dst_entry *dst;
 	struct sk_buff *skb;
 
-	skb = alloc_skb(LL_MAX_HEADER + l3hdrsize + NF_DEAF_TCP_DOFF * 4, GFP_ATOMIC);
+	skb = alloc_skb(LL_MAX_HEADER + l3hdrsize + NF_DEAF_TCP_DOFF * 4 + payloadsize + 32, GFP_ATOMIC);
 	if (unlikely(!skb))
 		return NULL;
 
 	skb_reserve(skb, LL_MAX_HEADER);
-	__skb_put(skb, l3hdrsize + NF_DEAF_TCP_DOFF * 4);
+	__skb_put(skb, l3hdrsize + NF_DEAF_TCP_DOFF * 4 + payloadsize);
 	skb_copy_queue_mapping(skb, oskb);
 	dst = dst_clone(skb_dst(oskb));
 	skb->dev = dst->dev;
 	skb_dst_set(skb, dst);
 	skb_reset_network_header(skb);
 	skb_set_transport_header(skb, l3hdrsize);
-	skb_fill_page_desc(skb, 0, buf_page, offset_in_page(buf), payloadsize);
-	VM_BUG_ON(offset_in_page(buf) + payloadsize > PAGE_SIZE);
-	skb->len += payloadsize;
-	skb->data_len = payloadsize;
-	get_page(buf_page);
 
 	return skb;
 }
@@ -297,7 +291,7 @@ nf_deaf_xmit4(const struct sk_buff *oskb, const struct iphdr *oiph,
 	iph->check = ip_fast_csum(iph, iph->ihl);
 
 	th = (void *)iph + sizeof(*iph);
-	nf_deaf_tcp_init(th, oth, corrupt_seq, corrupt_ackseq);
+	nf_deaf_tcp_init(th, oth, corrupt_seq, corrupt_ackseq, tmp_buf_size);
 
 	th->check = tcp_v4_check(NF_DEAF_TCP_DOFF * 4 + tmp_buf_size, iph->saddr, iph->daddr,
 				 csum_partial(th, NF_DEAF_TCP_DOFF * 4 + tmp_buf_size, 0));
@@ -337,7 +331,7 @@ nf_deaf_xmit6(const struct sk_buff *oskb, const struct ipv6hdr *oip6h,
 	ip6h->hop_limit = ttl ?: ip6h->hop_limit;
 
 	th = (void *)ip6h + sizeof(*ip6h);
-	nf_deaf_tcp_init(th, oth, corrupt_seq, corrupt_ackseq);
+	nf_deaf_tcp_init(th, oth, corrupt_seq, corrupt_ackseq, tmp_buf_size);
 	th->check = csum_ipv6_magic(&ip6h->saddr, &ip6h->daddr, NF_DEAF_TCP_DOFF * 4 + tmp_buf_size,
 				    IPPROTO_TCP, csum_partial(th, NF_DEAF_TCP_DOFF * 4 + tmp_buf_size,
 							      0));
@@ -430,11 +424,6 @@ static int __init nf_deaf_init(void)
 {
 	struct dentry __maybe_unused *file;
 	int ret, i;
-
-	if (is_vmalloc_or_module_addr(buf))
-		buf_page = vmalloc_to_page(buf);
-	else
-		buf_page = virt_to_page(buf);
 
 #ifdef CONFIG_DEBUG_FS
 	dir = debugfs_create_dir(KBUILD_MODNAME, NULL);
